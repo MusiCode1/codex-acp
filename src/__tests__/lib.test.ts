@@ -63,7 +63,7 @@ describe("in-process entry point", () => {
         const config = {developer_instructions: "test-instruction"};
         startAcpServer(input, output, {codexPath: "/explicit/codex", config, modelProvider: "explicit"});
         mocks.connected?.({client: {}, signal: new AbortController().signal});
-        expect(mocks.start).toHaveBeenCalledWith("/explicit/codex");
+        expect(mocks.start).toHaveBeenCalledWith("/explicit/codex", undefined);
         expect(mocks.stream).toHaveBeenCalledWith(input, output);
         expect(mocks.client).toHaveBeenCalledWith(expect.anything(), config, "explicit");
     });
@@ -76,8 +76,52 @@ describe("in-process entry point", () => {
         const {startAcpServer} = await import("../lib");
         startAcpServer(new PassThrough(), new PassThrough());
         mocks.connected?.({client: {}, signal: new AbortController().signal});
-        expect(mocks.start).toHaveBeenCalledWith("/env/codex");
+        expect(mocks.start).toHaveBeenCalledWith("/env/codex", undefined);
         expect(mocks.client).toHaveBeenCalledWith(expect.anything(), {model: "env-model"}, "env-provider");
+    });
+
+    it("merges child overrides without mutating the parent environment or options", async () => {
+        vi.stubEnv("DC_TOKEN", "parent-token");
+        vi.stubEnv("DC_ENV_INHERITED", "parent-value");
+        vi.stubEnv("CODEX_PATH", "/parent/codex");
+        mocks.start.mockReturnValue({process: child(), connection: {}});
+        const {startAcpServer} = await import("../lib");
+        const env = {DC_TOKEN: "child-token", CODEX_PATH: "/child-only/codex"};
+        const original = {...env};
+        startAcpServer(new PassThrough(), new PassThrough(), {env});
+        mocks.connected?.({client: {}, signal: new AbortController().signal});
+
+        const spawnEnv = mocks.start.mock.calls[0]?.[1];
+        const state = mocks.server.mock.calls[0]?.[5] as {env?: NodeJS.ProcessEnv};
+        expect(mocks.start).toHaveBeenCalledWith("/parent/codex", expect.objectContaining({
+            DC_TOKEN: "child-token",
+            DC_ENV_INHERITED: "parent-value",
+            CODEX_PATH: "/child-only/codex",
+        }));
+        expect(spawnEnv).not.toBe(env);
+        expect(spawnEnv).not.toBe(process.env);
+        expect(state.env).toBe(spawnEnv);
+        expect(env).toEqual(original);
+        expect(process.env["DC_TOKEN"]).toBe("parent-token");
+        env.DC_TOKEN = "changed-after-start";
+        expect(state.env?.["DC_TOKEN"]).toBe("child-token");
+    });
+
+    it("keeps concurrent agents' environment snapshots separate", async () => {
+        vi.stubEnv("DC_TOKEN", "parent-token");
+        mocks.start.mockReturnValue({process: child(), connection: {}});
+        const {startAcpServer} = await import("../lib");
+        startAcpServer(new PassThrough(), new PassThrough(), {env: {DC_TOKEN: "first-token"}});
+        mocks.connected?.({client: {}, signal: new AbortController().signal});
+        startAcpServer(new PassThrough(), new PassThrough(), {env: {DC_TOKEN: "second-token"}});
+        mocks.connected?.({client: {}, signal: new AbortController().signal});
+
+        const first = mocks.server.mock.calls[0]?.[5] as {env?: NodeJS.ProcessEnv};
+        const second = mocks.server.mock.calls[1]?.[5] as {env?: NodeJS.ProcessEnv};
+        expect(first.env?.["DC_TOKEN"]).toBe("first-token");
+        expect(second.env?.["DC_TOKEN"]).toBe("second-token");
+        expect(first.env).not.toBe(second.env);
+        expect(process.env["DC_TOKEN"]).toBe("parent-token");
     });
 
     it("closes the current child after a provider switch replaces the original", async () => {

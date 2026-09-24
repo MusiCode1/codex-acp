@@ -1,7 +1,10 @@
 import {describe, expect, it, vi} from "vitest";
+import {EventEmitter} from "node:events";
 import * as acp from "@agentclientprotocol/sdk";
 import {createCodexMockTestFixture, createTestSessionState} from "../acp-test-utils";
 import {CodexAcpClient, CUSTOM_GATEWAY_PROVIDER_ID, OPENAI_PROVIDER_ID} from "../../CodexAcpClient";
+import type {CodexProcessState} from "../../CodexAcpServer";
+import * as codexConnection from "../../CodexJsonRpcConnection";
 
 async function expectInvalidParams(fn: () => unknown): Promise<void> {
     const caught = await Promise.resolve().then(fn).catch((err: unknown) => err);
@@ -261,6 +264,56 @@ describe("Configurable LLM providers (providers/*)", () => {
             apiType: "openai",
             baseUrl: "https://api.openai.com/v1",
         });
+    });
+
+    it("preserves the child environment when provider changes restart app-server", async () => {
+        const makeProcess = () => Object.assign(new EventEmitter(), {
+            stdin: {end: vi.fn()},
+            stderr: new EventEmitter(),
+            exitCode: 0,
+            kill: vi.fn(),
+        }) as unknown as codexConnection.CodexConnection["process"];
+        const original = makeProcess();
+        const replacement = makeProcess();
+        const fixture = createCodexMockTestFixture(undefined, original);
+        const agent = fixture.getCodexAcpAgent();
+        await agent.initialize({protocolVersion: acp.PROTOCOL_VERSION});
+        const {codexProcessState: state, sessions} = agent as unknown as {
+            codexProcessState: CodexProcessState;
+            sessions: Map<string, ReturnType<typeof createTestSessionState>>;
+        };
+        const env = {...process.env, DC_TOKEN: "scoped-agent-token", DRIVE_CODING_AGENT_ID: "scoped-agent"};
+        state.env = env;
+        state.codexPath = "/scoped/codex";
+        sessions.set("thread-1", createTestSessionState({sessionId: "thread-1", cwd: "/workspace"}));
+        const start = vi.spyOn(codexConnection, "startCodexConnection")
+            .mockReturnValue({connection: state.connection.connection, process: replacement});
+        const initialize = vi.spyOn(CodexAcpClient.prototype, "initialize").mockResolvedValue();
+        const resume = vi.spyOn(CodexAcpClient.prototype, "resumeSession").mockResolvedValue({} as never);
+
+        try {
+            await agent.setProvider({
+                providerId: OPENAI_PROVIDER_ID,
+                apiType: "openai",
+                baseUrl: "https://gateway.example/v1",
+            });
+            await agent.disableProvider({providerId: OPENAI_PROVIDER_ID});
+
+            expect(start).toHaveBeenCalledTimes(2);
+            for (const call of start.mock.calls) {
+                expect(call[0]).toBe("/scoped/codex");
+                expect(call[1]).toBe(env);
+                expect(call[1]?.["DC_TOKEN"]).toBe("scoped-agent-token");
+                expect(call[1]?.["DRIVE_CODING_AGENT_ID"]).toBe("scoped-agent");
+            }
+            expect(original.stdin.end).toHaveBeenCalledOnce();
+            expect(resume).toHaveBeenCalledTimes(2);
+            expect(state.connection.process).toBe(replacement);
+        } finally {
+            start.mockRestore();
+            initialize.mockRestore();
+            resume.mockRestore();
+        }
     });
 
     it("attempts every session resume and allows a later provider update after one fails", async () => {

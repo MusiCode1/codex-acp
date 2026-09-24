@@ -112,7 +112,17 @@ See the [diff statistics specification](docs/diff-statistics-extension.md) for t
 
 Import `startAcpServer` from `@musicode1/codex-acp/lib`. The import has no startup
 side effects. Call it with Node readable/writable streams and optional `codexPath`,
-`config`, `modelProvider`, and `defaultAuthRequest` overrides. Omitted options retain
+`config`, `modelProvider`, `defaultAuthRequest`, and `env` overrides. Omitted options retain
 the upstream environment-variable fallbacks. Closing the readable stream shuts down
 the current Codex process, including a replacement started by provider switching.
 The CLI and library use the same request registrations and process lifecycle.
+
+`env` contains per-child environment overrides. When supplied, they are merged into
+a fresh copy of `process.env` at startup and the same snapshot is reused when provider
+switching replaces the Codex process. Neither the parent environment nor the caller's
+object is mutated. If omitted, Codex retains normal environment inheritance. `env`
+does not change the adapter's existing option fallbacks (for example `CODEX_PATH`);
+use the corresponding explicit option to configure the adapter itself.
+
+Version `1.13.1-dc.1` identifies this fork's embedding and scoped-environment
+changes on top of upstream `1.13.1`; it is not an upstream stable release.

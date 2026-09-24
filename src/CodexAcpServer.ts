@@ -258,6 +258,7 @@ interface ActivePrompt {
 export interface CodexProcessState {
     connection: CodexConnection;
     codexPath: string | undefined;
+    env?: NodeJS.ProcessEnv | undefined;
     config: JsonObject | undefined;
     modelProvider: string | undefined;
     stderr: string;
@@ -1137,7 +1138,7 @@ export class CodexAcpServer {
         clearTimeout(forceKill);
 
         state.stderr = "";
-        state.connection = startCodexConnection(state.codexPath);
+        state.connection = startCodexConnection(state.codexPath, state.env);
         this.captureStderr();
         this.observeCodexProcess();
         return new CodexAcpClient(

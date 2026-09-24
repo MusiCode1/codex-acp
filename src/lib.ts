@@ -51,6 +51,7 @@ const asyncTaskStopParamsParser = z.object({
 
 export interface StartAcpServerOptions {
     codexPath?: string;
+    env?: NodeJS.ProcessEnv;
     config?: JsonObject;
     modelProvider?: string;
     defaultAuthRequest?: unknown;
@@ -62,6 +63,7 @@ export function startAcpServer(
     opts: StartAcpServerOptions = {},
 ): void {
     const codexPath = opts.codexPath ?? process.env["CODEX_PATH"];
+    const env = opts.env === undefined ? undefined : {...process.env, ...opts.env};
     const configString = process.env["CODEX_CONFIG"];
     const authRequestString = process.env["DEFAULT_AUTH_REQUEST"];
     const modelProvider = opts.modelProvider ?? process.env["MODEL_PROVIDER"];
@@ -80,8 +82,9 @@ export function startAcpServer(
     });
 
     const codexProcessState: CodexProcessState = {
-        connection: startCodexConnection(codexPath),
+        connection: startCodexConnection(codexPath, env),
         codexPath,
+        env,
         config,
         modelProvider,
         stderr: "",

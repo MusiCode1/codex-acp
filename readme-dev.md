@@ -107,3 +107,12 @@ compaction lifecycle instead of the legacy completion advisory.
 
 See the [diff statistics specification](docs/diff-statistics-extension.md) for the
 `_meta.jetbrains.air.diffStats` payload and its compatibility rules.
+
+## In-process embedding (drive-coding fork)
+
+Import `startAcpServer` from `@musicode1/codex-acp/lib`. The import has no startup
+side effects. Call it with Node readable/writable streams and optional `codexPath`,
+`config`, `modelProvider`, and `defaultAuthRequest` overrides. Omitted options retain
+the upstream environment-variable fallbacks. Closing the readable stream shuts down
+the current Codex process, including a replacement started by provider switching.
+The CLI and library use the same request registrations and process lifecycle.

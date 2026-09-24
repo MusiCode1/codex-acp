@@ -1,5 +1,5 @@
 {
-  "name": "@agentclientprotocol/codex-acp",
+  "name": "@musicode1/codex-acp",
   "publishConfig": {
     "access": "public"
   },
@@ -11,6 +11,7 @@
   },
   "files": [
     "dist/index.js",
+    "dist/lib.js",
     "README.md",
     "LICENSE",
     "package.json"
@@ -42,7 +43,8 @@
     "test:e2e": "npm run build && RUN_E2E_TESTS=true vitest run --no-file-parallelism --retry=2 src/__tests__/CodexACPAgent/e2e",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc --noEmit -p examples/tsconfig.json",
-    "codex-test": "tsx .claude/skills/run-codex/scripts/run-codex-test.ts"
+    "codex-test": "tsx .claude/skills/run-codex/scripts/run-codex-test.ts",
+    "prepare": "npm run build"
   },
   "homepage": "https://github.com/agentclientprotocol/codex-acp#readme",
   "bugs": {
@@ -50,7 +52,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/agentclientprotocol/codex-acp.git"
+    "url": "git+https://github.com/MusiCode1/codex-acp.git"
   },
   "keywords": [],
   "author": "Agent Client Protocol",
@@ -71,5 +73,9 @@
     "open": "^11.0.1",
     "vscode-jsonrpc": "^9.0.1",
     "zod": "^4.0.0"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./lib": "./dist/lib.js"
   }
 }

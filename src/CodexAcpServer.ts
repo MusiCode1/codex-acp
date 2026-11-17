@@ -1,4 +1,12 @@
 import * as acp from "@agentclientprotocol/sdk/unstable";
+import {
+    FORWARDED_REALTIME_METHODS,
+    REALTIME_APPEND_SPEECH_METHOD,
+    REALTIME_EVENT_NOTIFICATION,
+    REALTIME_START_METHOD,
+    REALTIME_STOP_METHOD,
+    realtimeDelegationInput,
+} from "./RealtimeExtension";
 import {RequestError, type SessionId, type SessionModeState} from "@agentclientprotocol/sdk/unstable";
 import {CodexEventHandler, type CompletedPlan, failureWasShownAsMessage} from "./CodexEventHandler";
 import {attachmentFileUri, desktopAttachmentHistory} from "./DesktopAttachmentHistory";
@@ -1014,6 +1022,33 @@ export class CodexAcpServer {
                     ),
                 };
             }
+            case REALTIME_START_METHOD:
+            case REALTIME_STOP_METHOD:
+            case REALTIME_APPEND_SPEECH_METHOD: {
+                const sessionState = this.sessions.get(methodRequest.params.sessionId);
+                if (!sessionState) {
+                    throw RequestError.invalidParams(undefined, `Unknown session: ${methodRequest.params.sessionId}`);
+                }
+                if (this.providerUpdate !== null) {
+                    await this.waitForProviderUpdate();
+                }
+                const sessionReady = this.ensureSessionReady(sessionState);
+                if (sessionReady) await sessionReady;
+                const client = this.codexAcpClient;
+                if (methodRequest.method === REALTIME_START_METHOD) {
+                    this.forwardRealtimeEvents(client);
+                    const params = methodRequest.params;
+                    const sdp = await this.runWithProcessCheck(() => client.startRealtimeWebrtc(params));
+                    return {sdp};
+                }
+                if (methodRequest.method === REALTIME_STOP_METHOD) {
+                    await this.runWithProcessCheck(() => client.stopRealtime(sessionState.sessionId));
+                    return {};
+                }
+                const text = methodRequest.params.text;
+                await this.runWithProcessCheck(() => client.appendRealtimeSpeech(sessionState.sessionId, text));
+                return {};
+            }
             case GOAL_CONTROL_METHOD:
             case LEGACY_GOAL_CONTROL_METHOD: {
                 const sessionState = this.sessions.get(methodRequest.params.sessionId);
@@ -1684,6 +1719,7 @@ export class CodexAcpServer {
                 }
                 await this.trackCodexForegroundWork(sessionState, event);
                 await this.trackSteerLanding(sessionState, event);
+                await this.emitRealtimeDelegationUserMessage(sessionState, event);
                 this.handleSkillsChanged(sessionState, event);
                 // Codex-started turns carry no `userMessage` item; `handleSessionScopedNotification`
                 // already drops that item type, so nothing is synthesized here.
@@ -1842,6 +1878,40 @@ export class CodexAcpServer {
                 await this.emitLiveSteerUserMessage(sessionState.sessionId, clientUserMessageId, entry.prompt);
                 return;
             }
+        }
+    }
+
+    private readonly realtimeForwarded = new WeakSet<object>();
+    /** Forwards the voice session's lifecycle and final transcripts to the client, once per app-server client. */
+    private forwardRealtimeEvents(client: CodexAcpClient): void {
+        if (this.realtimeForwarded.has(client)) return;
+        this.realtimeForwarded.add(client);
+        client.onRealtimeNotification(notification => {
+            if (!FORWARDED_REALTIME_METHODS.has(notification.method)) return;
+            const params = notification.params as Record<string, unknown>;
+            const sessionId = typeof params["threadId"] === "string" ? params["threadId"] : null;
+            if (sessionId === null || !this.sessions.has(sessionId)) return;
+            void this.connection.notify(REALTIME_EVENT_NOTIFICATION, {sessionId, method: notification.method, params})
+                .catch((error: unknown) => logger.error(`Failed to forward ${notification.method} for session ${sessionId}`, error));
+        });
+    }
+
+    /**
+     * A voice delegation runs as a Codex-started turn whose `userMessage` is the wrapped request.
+     * Codex-started turns otherwise drop that item, so show the spoken request as the user message.
+     */
+    private async emitRealtimeDelegationUserMessage(sessionState: SessionState, event: ServerNotification): Promise<void> {
+        if (event.method !== "item/completed" || event.params.threadId !== sessionState.sessionId) return;
+        const item = event.params.item;
+        if (item.type !== "userMessage") return;
+        const text = item.content.map(part => part.type === "text" ? part.text : "").join("");
+        const input = realtimeDelegationInput(text);
+        if (input === null) return;
+        const session = new ACPSessionConnection(this.connection, sessionState.sessionId);
+        try {
+            await session.update(createUserMessageChunk({type: "text", text: input}, item.id));
+        } catch (error) {
+            logger.error(`Failed to send the voice request for session ${sessionState.sessionId}`, error);
         }
     }
 

@@ -1,6 +1,7 @@
 import * as acp from "@agentclientprotocol/sdk/unstable";
 import * as acpV2 from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {z} from "zod";
+import {REALTIME_APPEND_SPEECH_METHOD, REALTIME_START_METHOD, REALTIME_STOP_METHOD} from "./RealtimeExtension";
 import type {CodexAcpServer} from "./CodexAcpServer";
 import {type AcpClientConnection, AcpV2Connection} from "./ACPSessionConnection";
 import packageJson from "../package.json";
@@ -55,6 +56,23 @@ const goalControlParamsParser = z.discriminatedUnion("action", [
 const asyncTaskStopParamsParser = z.object({
     sessionId: z.string().trim().min(1),
     asyncTaskId: z.string().trim().min(1),
+}).passthrough();
+
+const realtimeStartParamsParser = z.object({
+    sessionId: z.string().trim().min(1),
+    sdp: z.string().min(1),
+    prompt: z.string().optional(),
+    voice: z.string().optional(),
+    delegationAckFiller: z.boolean().optional(),
+}).passthrough();
+
+const realtimeStopParamsParser = z.object({
+    sessionId: z.string().trim().min(1),
+}).passthrough();
+
+const realtimeAppendSpeechParamsParser = z.object({
+    sessionId: z.string().trim().min(1),
+    text: z.string().min(1),
 }).passthrough();
 
 const hooksListParamsParser = z.object({cwd: z.string().trim().min(1)});
@@ -210,6 +228,9 @@ function createRouter(
         .onRequest(CODEX_HOOKS_LIST_METHOD, hooksListParamsParser, (ctx) => getAgent().listHooks(ctx.params.cwd))
         .onRequest(CODEX_HOOKS_TRUST_METHOD, hooksTrustParamsParser, (ctx) => getAgent().trustHooks(ctx.params.cwd, ctx.params.hooks))
         .onRequest(GOAL_CONTROL_METHOD, goalControlParamsParser, (ctx) => getAgent(ctx.params).extMethod(GOAL_CONTROL_METHOD, ctx.params))
+        .onRequest(REALTIME_START_METHOD, realtimeStartParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_START_METHOD, ctx.params))
+        .onRequest(REALTIME_STOP_METHOD, realtimeStopParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_STOP_METHOD, ctx.params))
+        .onRequest(REALTIME_APPEND_SPEECH_METHOD, realtimeAppendSpeechParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_APPEND_SPEECH_METHOD, ctx.params))
         .onRequest(SESSION_RENAME_METHOD, sessionRenameParamsParser, (ctx) => getAgent(ctx.params).sessionIndex.rename(ctx.params))
         .onRequest(SESSION_BATCH_GET_METHOD, sessionBatchGetParamsParser, (ctx) => getAgent().sessionIndex.batchGet(ctx.params))
         .onRequest(SESSION_ARCHIVE_METHOD, sessionArchiveParamsParser, (ctx) => getAgent(ctx.params).sessionIndex.setArchived(ctx.params, true))
@@ -240,6 +261,9 @@ function createRouter(
         .onRequest(acpV2.methods.agent.providers.disable, (ctx) => getAgent().disableProvider(ctx.params))
         .onRequest(SESSION_STEERING_METHOD, sessionSteerParamsParser, (ctx) => getAgent(ctx.params).extMethod(SESSION_STEERING_METHOD, ctx.params))
         .onRequest(GOAL_CONTROL_METHOD, goalControlParamsParser, (ctx) => getAgent(ctx.params).extMethod(GOAL_CONTROL_METHOD, ctx.params))
+        .onRequest(REALTIME_START_METHOD, realtimeStartParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_START_METHOD, ctx.params))
+        .onRequest(REALTIME_STOP_METHOD, realtimeStopParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_STOP_METHOD, ctx.params))
+        .onRequest(REALTIME_APPEND_SPEECH_METHOD, realtimeAppendSpeechParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_APPEND_SPEECH_METHOD, ctx.params))
         .onRequest(ASYNC_TASK_STOP_METHOD, asyncTaskStopParamsParser, (ctx) => getAgent(ctx.params).extMethod(ASYNC_TASK_STOP_METHOD, ctx.params))
         .onRequest(SESSION_RENAME_METHOD, sessionRenameParamsParser, (ctx) => getAgent(ctx.params).sessionIndex.rename(ctx.params))
         .onRequest(SESSION_BATCH_GET_METHOD, sessionBatchGetParamsParser, (ctx) => getAgent().sessionIndex.batchGet(ctx.params))

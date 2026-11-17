@@ -15,6 +15,14 @@ import {
     ASYNC_TASK_STOP_METHOD,
     type AsyncTaskStopExtRequest,
 } from "./async-tasks/AsyncTaskExtension";
+import {
+    REALTIME_APPEND_SPEECH_METHOD,
+    REALTIME_START_METHOD,
+    REALTIME_STOP_METHOD,
+    type RealtimeAppendSpeechExtRequest,
+    type RealtimeStartExtRequest,
+    type RealtimeStopExtRequest,
+} from "./RealtimeExtension";
 
 export {
     AUTH_STATUS_META_KEY,
@@ -79,6 +87,9 @@ export type ExtMethodRequest =
     | SessionSteeringExtRequest
     | GoalControlExtRequest
     | AsyncTaskStopExtRequest
+    | RealtimeStartExtRequest
+    | RealtimeStopExtRequest
+    | RealtimeAppendSpeechExtRequest
 
 export function isExtMethodRequest(request: { method: string, params: Record<string, unknown> }): request is ExtMethodRequest {
     return request.method === "authentication/status"
@@ -87,7 +98,10 @@ export function isExtMethodRequest(request: { method: string, params: Record<str
         || request.method === GOAL_CONTROL_METHOD
         || request.method === LEGACY_GOAL_CONTROL_METHOD
         || request.method === SESSION_STEERING_METHOD
-        || request.method === ASYNC_TASK_STOP_METHOD;
+        || request.method === ASYNC_TASK_STOP_METHOD
+        || request.method === REALTIME_START_METHOD
+        || request.method === REALTIME_STOP_METHOD
+        || request.method === REALTIME_APPEND_SPEECH_METHOD;
 }
 
 /**

@@ -868,6 +868,29 @@ export class CodexAppServerClient {
         return await this.sendRequest({ method: "thread/goal/clear", params: params });
     }
 
+    // Realtime (voice) requests are experimental in app-server and absent from the stable generated types.
+    async threadRealtimeStart(params: ThreadRealtimeStartRequest["params"]): Promise<Record<string, never>> {
+        return await this.sendRequest({ method: "thread/realtime/start", params });
+    }
+
+    async threadRealtimeStop(params: ThreadRealtimeStopRequest["params"]): Promise<Record<string, never>> {
+        return await this.sendRequest({ method: "thread/realtime/stop", params });
+    }
+
+    async threadRealtimeAppendSpeech(params: ThreadRealtimeAppendSpeechRequest["params"]): Promise<Record<string, never>> {
+        return await this.sendRequest({ method: "thread/realtime/appendSpeech", params });
+    }
+
+    private realtimeListeners: Array<(notification: ServerNotification) => void> = [];
+    /** Observes every `thread/realtime/*` notification, in addition to the per-session routing. */
+    onRealtimeNotification(callback: (notification: ServerNotification) => void): () => void {
+        this.realtimeListeners.push(callback);
+        return () => {
+            const index = this.realtimeListeners.indexOf(callback);
+            if (index !== -1) this.realtimeListeners.splice(index, 1);
+        };
+    }
+
     async listMcpServerStatus(params: ListMcpServerStatusParams): Promise<ListMcpServerStatusResponse> {
         return await this.sendRequest({ method: "mcpServerStatus/list", params });
     }
@@ -1018,6 +1041,9 @@ export class CodexAppServerClient {
 
     private notificationHandlers = new Map<string, (event: ServerNotification) => void>();
     private notify(notification: ServerNotification) {
+        if (notification.method.startsWith("thread/realtime/")) {
+            for (const listener of [...this.realtimeListeners]) listener(notification);
+        }
         const threadId = extractThreadId(notification);
         if (threadId !== null) {
             const handler = this.notificationHandlers.get(threadId);
@@ -1377,6 +1403,22 @@ export type CompactionCompletedNotification =
     | { method: "item/completed", params: ItemCompletedNotification & { item: Extract<ItemCompletedNotification["item"], { type: "contextCompaction" }> } };
 
 type CodexRequest = DistributiveOmit<ClientRequest, "id"> | ThreadBackgroundTerminalsRequest
+    | ThreadRealtimeStartRequest | ThreadRealtimeStopRequest | ThreadRealtimeAppendSpeechRequest
+
+type ThreadRealtimeStartRequest = {
+    method: "thread/realtime/start";
+    params: {
+        threadId: string;
+        outputModality: "text" | "audio";
+        version: "v1" | "v2" | "v3";
+        transport: { type: "webrtc"; sdp: string };
+        prompt?: string;
+        voice?: string;
+        delegationAckFiller?: boolean;
+    };
+};
+type ThreadRealtimeStopRequest = { method: "thread/realtime/stop"; params: { threadId: string } };
+type ThreadRealtimeAppendSpeechRequest = { method: "thread/realtime/appendSpeech"; params: { threadId: string; text: string } };
 
 type DistributiveOmit<T, K extends keyof any> = T extends any
     ? Omit<T, K>

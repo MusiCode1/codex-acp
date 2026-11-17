@@ -94,6 +94,7 @@ import {
 import {findSupportedEffort} from "./ModelConfigOption";
 import {type ProviderStartupConfig, configOverride, NO_PROVIDER_STARTUP_CONFIG} from "./CodexConfigOverride";
 import {disableUnsupportedSkills, withoutUnsupportedSkills} from "./UnsupportedSkills";
+import {REALTIME_SDP_TIMEOUT_MS, type RealtimeStartRequest} from "./RealtimeExtension";
 export type {SessionMetadata, SessionMetadataWithThread} from "./SessionMetadata";
 /** A null turn marks unavailable outcome metadata, not a failed turn. */
 export type RecordedSubagentEntry = {item: ThreadItem; completed: boolean; turnId?: string} | {turn: Turn | null};
@@ -1065,6 +1066,55 @@ export class CodexAcpClient {
         onAccepted?: () => void,
     ): Promise<TurnCompletedNotification> {
         return await this.codexClient.runCompact({threadId: sessionId}, onTurnStarted, onAccepted);
+    }
+
+    /**
+     * Starts the voice front-end on the session's thread over WebRTC (GPT-Live, v3) and returns the
+     * SDP answer, which app-server delivers as a `thread/realtime/sdp` notification after accepting.
+     */
+    async startRealtimeWebrtc(request: RealtimeStartRequest): Promise<string> {
+        const threadId = request.sessionId;
+        let unsubscribe = () => {};
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const answer = new Promise<string>((resolve, reject) => {
+            unsubscribe = this.codexClient.onRealtimeNotification(notification => {
+                const params = notification.params as {threadId?: string, sdp?: string, message?: string, reason?: string | null};
+                if (params.threadId !== threadId) return;
+                if (notification.method === "thread/realtime/sdp" && typeof params.sdp === "string") resolve(params.sdp);
+                else if (notification.method === "thread/realtime/error") reject(new Error(params.message ?? "realtime error"));
+                else if (notification.method === "thread/realtime/closed") reject(new Error(`realtime closed: ${params.reason ?? "unknown"}`));
+            });
+            timer = setTimeout(() => reject(new Error("realtime SDP answer timed out")), REALTIME_SDP_TIMEOUT_MS);
+        });
+        // Observe the rejection now, so a failure while `start` is still pending is not unhandled.
+        answer.catch(() => {});
+        try {
+            await this.codexClient.threadRealtimeStart({
+                threadId,
+                outputModality: "audio",
+                version: "v3",
+                transport: {type: "webrtc", sdp: request.sdp},
+                ...(request.prompt !== undefined ? {prompt: request.prompt} : {}),
+                ...(request.voice !== undefined ? {voice: request.voice} : {}),
+                ...(request.delegationAckFiller !== undefined ? {delegationAckFiller: request.delegationAckFiller} : {}),
+            });
+            return await answer;
+        } finally {
+            unsubscribe();
+            if (timer !== undefined) clearTimeout(timer);
+        }
+    }
+
+    async stopRealtime(sessionId: string): Promise<void> {
+        await this.codexClient.threadRealtimeStop({threadId: sessionId});
+    }
+
+    async appendRealtimeSpeech(sessionId: string, text: string): Promise<void> {
+        await this.codexClient.threadRealtimeAppendSpeech({threadId: sessionId, text});
+    }
+
+    onRealtimeNotification(callback: (notification: ServerNotification) => void): () => void {
+        return this.codexClient.onRealtimeNotification(callback);
     }
 
     async getGoal(sessionId: string): Promise<ThreadGoal | null> {

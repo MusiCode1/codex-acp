@@ -94,7 +94,7 @@ import {
 import {findSupportedEffort} from "./ModelConfigOption";
 import {type ProviderStartupConfig, configOverride, NO_PROVIDER_STARTUP_CONFIG} from "./CodexConfigOverride";
 import {disableUnsupportedSkills, withoutUnsupportedSkills} from "./UnsupportedSkills";
-import {REALTIME_SDP_TIMEOUT_MS, type RealtimeStartRequest} from "./RealtimeExtension";
+import {REALTIME_DEFAULT_VOICE, REALTIME_SDP_TIMEOUT_MS, type RealtimeListVoicesResponse, type RealtimeStartRequest} from "./RealtimeExtension";
 export type {SessionMetadata, SessionMetadataWithThread} from "./SessionMetadata";
 /** A null turn marks unavailable outcome metadata, not a failed turn. */
 export type RecordedSubagentEntry = {item: ThreadItem; completed: boolean; turnId?: string} | {turn: Turn | null};
@@ -1104,6 +1104,13 @@ export class CodexAcpClient {
             unsubscribe();
             if (timer !== undefined) clearTimeout(timer);
         }
+    }
+
+    /** v3 voices — the version `startRealtimeWebrtc` uses. */
+    async listRealtimeVoices(): Promise<RealtimeListVoicesResponse> {
+        const {voices} = await this.codexClient.threadRealtimeListVoices();
+        const v3 = voices.v3 ?? [];
+        return {voices: v3, default: v3.includes(REALTIME_DEFAULT_VOICE) ? REALTIME_DEFAULT_VOICE : (v3[0] ?? REALTIME_DEFAULT_VOICE)};
     }
 
     async stopRealtime(sessionId: string): Promise<void> {

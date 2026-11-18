@@ -1,7 +1,7 @@
 import * as acp from "@agentclientprotocol/sdk/unstable";
 import * as acpV2 from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {z} from "zod";
-import {REALTIME_APPEND_SPEECH_METHOD, REALTIME_START_METHOD, REALTIME_STOP_METHOD} from "./RealtimeExtension";
+import {REALTIME_APPEND_SPEECH_METHOD, REALTIME_LIST_VOICES_METHOD, REALTIME_START_METHOD, REALTIME_STOP_METHOD} from "./RealtimeExtension";
 import type {CodexAcpServer} from "./CodexAcpServer";
 import {type AcpClientConnection, AcpV2Connection} from "./ACPSessionConnection";
 import packageJson from "../package.json";
@@ -232,6 +232,7 @@ function createRouter(
         .onRequest(REALTIME_START_METHOD, realtimeStartParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_START_METHOD, ctx.params))
         .onRequest(REALTIME_STOP_METHOD, realtimeStopParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_STOP_METHOD, ctx.params))
         .onRequest(REALTIME_APPEND_SPEECH_METHOD, realtimeAppendSpeechParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_APPEND_SPEECH_METHOD, ctx.params))
+        .onRequest(REALTIME_LIST_VOICES_METHOD, realtimeStopParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_LIST_VOICES_METHOD, ctx.params))
         .onRequest(SESSION_RENAME_METHOD, sessionRenameParamsParser, (ctx) => getAgent(ctx.params).sessionIndex.rename(ctx.params))
         .onRequest(SESSION_BATCH_GET_METHOD, sessionBatchGetParamsParser, (ctx) => getAgent().sessionIndex.batchGet(ctx.params))
         .onRequest(SESSION_ARCHIVE_METHOD, sessionArchiveParamsParser, (ctx) => getAgent(ctx.params).sessionIndex.setArchived(ctx.params, true))
@@ -265,6 +266,7 @@ function createRouter(
         .onRequest(REALTIME_START_METHOD, realtimeStartParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_START_METHOD, ctx.params))
         .onRequest(REALTIME_STOP_METHOD, realtimeStopParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_STOP_METHOD, ctx.params))
         .onRequest(REALTIME_APPEND_SPEECH_METHOD, realtimeAppendSpeechParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_APPEND_SPEECH_METHOD, ctx.params))
+        .onRequest(REALTIME_LIST_VOICES_METHOD, realtimeStopParamsParser, (ctx) => getAgent(ctx.params).extMethod(REALTIME_LIST_VOICES_METHOD, ctx.params))
         .onRequest(ASYNC_TASK_STOP_METHOD, asyncTaskStopParamsParser, (ctx) => getAgent(ctx.params).extMethod(ASYNC_TASK_STOP_METHOD, ctx.params))
         .onRequest(SESSION_RENAME_METHOD, sessionRenameParamsParser, (ctx) => getAgent(ctx.params).sessionIndex.rename(ctx.params))
         .onRequest(SESSION_BATCH_GET_METHOD, sessionBatchGetParamsParser, (ctx) => getAgent().sessionIndex.batchGet(ctx.params))

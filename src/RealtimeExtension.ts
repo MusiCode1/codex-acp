@@ -10,6 +10,7 @@ import type {SessionId} from "@agentclientprotocol/sdk/unstable";
 export const REALTIME_START_METHOD = "_codex/realtime/start";
 export const REALTIME_STOP_METHOD = "_codex/realtime/stop";
 export const REALTIME_APPEND_SPEECH_METHOD = "_codex/realtime/appendSpeech";
+export const REALTIME_LIST_VOICES_METHOD = "_codex/realtime/listVoices";
 /** Notification carrying a forwarded `thread/realtime/*` app-server notification. */
 export const REALTIME_EVENT_NOTIFICATION = "_codex/realtime/event";
 
@@ -27,10 +28,16 @@ export type RealtimeStartRequest = {
 export type RealtimeStartResponse = { sdp: string };
 export type RealtimeStopRequest = { sessionId: SessionId };
 export type RealtimeAppendSpeechRequest = { sessionId: SessionId; text: string };
+export type RealtimeListVoicesRequest = { sessionId: SessionId };
+/** Voices of the realtime version this extension starts (v3), and the one used when none is chosen. */
+export type RealtimeListVoicesResponse = { voices: string[]; default: string };
+/** Codex's own default on the ChatGPT route when no voice is set (codex-api realtime_call.rs). */
+export const REALTIME_DEFAULT_VOICE = "cove";
 
 export type RealtimeStartExtRequest = { method: typeof REALTIME_START_METHOD; params: RealtimeStartRequest };
 export type RealtimeStopExtRequest = { method: typeof REALTIME_STOP_METHOD; params: RealtimeStopRequest };
 export type RealtimeAppendSpeechExtRequest = { method: typeof REALTIME_APPEND_SPEECH_METHOD; params: RealtimeAppendSpeechRequest };
+export type RealtimeListVoicesExtRequest = { method: typeof REALTIME_LIST_VOICES_METHOD; params: RealtimeListVoicesRequest };
 
 export type RealtimeEventNotification = {
     sessionId: SessionId;

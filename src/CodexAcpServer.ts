@@ -3,6 +3,7 @@ import {
     FORWARDED_REALTIME_METHODS,
     REALTIME_APPEND_SPEECH_METHOD,
     REALTIME_EVENT_NOTIFICATION,
+    REALTIME_LIST_VOICES_METHOD,
     REALTIME_START_METHOD,
     REALTIME_STOP_METHOD,
 } from "./RealtimeExtension";
@@ -1023,7 +1024,8 @@ export class CodexAcpServer {
             }
             case REALTIME_START_METHOD:
             case REALTIME_STOP_METHOD:
-            case REALTIME_APPEND_SPEECH_METHOD: {
+            case REALTIME_APPEND_SPEECH_METHOD:
+            case REALTIME_LIST_VOICES_METHOD: {
                 const sessionState = this.sessions.get(methodRequest.params.sessionId);
                 if (!sessionState) {
                     throw RequestError.invalidParams(undefined, `Unknown session: ${methodRequest.params.sessionId}`);
@@ -1039,6 +1041,9 @@ export class CodexAcpServer {
                     const params = methodRequest.params;
                     const sdp = await this.runWithProcessCheck(() => client.startRealtimeWebrtc(params));
                     return {sdp};
+                }
+                if (methodRequest.method === REALTIME_LIST_VOICES_METHOD) {
+                    return await this.runWithProcessCheck(() => client.listRealtimeVoices());
                 }
                 if (methodRequest.method === REALTIME_STOP_METHOD) {
                     await this.runWithProcessCheck(() => client.stopRealtime(sessionState.sessionId));

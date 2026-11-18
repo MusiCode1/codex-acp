@@ -17,9 +17,11 @@ import {
 } from "./async-tasks/AsyncTaskExtension";
 import {
     REALTIME_APPEND_SPEECH_METHOD,
+    REALTIME_LIST_VOICES_METHOD,
     REALTIME_START_METHOD,
     REALTIME_STOP_METHOD,
     type RealtimeAppendSpeechExtRequest,
+    type RealtimeListVoicesExtRequest,
     type RealtimeStartExtRequest,
     type RealtimeStopExtRequest,
 } from "./RealtimeExtension";
@@ -90,6 +92,7 @@ export type ExtMethodRequest =
     | RealtimeStartExtRequest
     | RealtimeStopExtRequest
     | RealtimeAppendSpeechExtRequest
+    | RealtimeListVoicesExtRequest
 
 export function isExtMethodRequest(request: { method: string, params: Record<string, unknown> }): request is ExtMethodRequest {
     return request.method === "authentication/status"
@@ -101,7 +104,8 @@ export function isExtMethodRequest(request: { method: string, params: Record<str
         || request.method === ASYNC_TASK_STOP_METHOD
         || request.method === REALTIME_START_METHOD
         || request.method === REALTIME_STOP_METHOD
-        || request.method === REALTIME_APPEND_SPEECH_METHOD;
+        || request.method === REALTIME_APPEND_SPEECH_METHOD
+        || request.method === REALTIME_LIST_VOICES_METHOD;
 }
 
 /**

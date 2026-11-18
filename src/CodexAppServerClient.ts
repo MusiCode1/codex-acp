@@ -877,6 +877,10 @@ export class CodexAppServerClient {
         return await this.sendRequest({ method: "thread/realtime/stop", params });
     }
 
+    async threadRealtimeListVoices(): Promise<{ voices: { v1?: string[]; v2?: string[]; v3?: string[] } }> {
+        return await this.sendRequest({ method: "thread/realtime/listVoices", params: {} });
+    }
+
     async threadRealtimeAppendSpeech(params: ThreadRealtimeAppendSpeechRequest["params"]): Promise<Record<string, never>> {
         return await this.sendRequest({ method: "thread/realtime/appendSpeech", params });
     }
@@ -1404,6 +1408,7 @@ export type CompactionCompletedNotification =
 
 type CodexRequest = DistributiveOmit<ClientRequest, "id"> | ThreadBackgroundTerminalsRequest
     | ThreadRealtimeStartRequest | ThreadRealtimeStopRequest | ThreadRealtimeAppendSpeechRequest
+    | { method: "thread/realtime/listVoices"; params: Record<string, never> }
 
 type ThreadRealtimeStartRequest = {
     method: "thread/realtime/start";

@@ -55,3 +55,32 @@ export const FORWARDED_REALTIME_METHODS: ReadonlySet<string> = new Set([
 
 /** How long to wait for the SDP answer after `thread/realtime/start` is accepted. */
 export const REALTIME_SDP_TIMEOUT_MS = 30_000;
+
+/**
+ * Marks a chat message as part of the voice conversation, in `_meta.codex.realtime`:
+ * - `speech`: what the user or the voice said (final transcript).
+ * - `handoff`: a request the voice delegated to Codex; the message text is the request and
+ *   `transcript` is the conversation since the previous handoff, as Codex received it.
+ */
+export type RealtimeMessageMeta =
+    | { kind: "speech"; role: "user" | "assistant" }
+    | { kind: "handoff"; transcript?: string };
+
+export function realtimeMeta(realtime: RealtimeMessageMeta): { codex: { realtime: RealtimeMessageMeta } } {
+    return {codex: {realtime}};
+}
+
+const DELEGATION = /^<realtime_delegation>\s*<input>([\s\S]*?)<\/input>(?:\s*<transcript_delta>([\s\S]*?)<\/transcript_delta>)?/;
+
+/**
+ * Codex hands a voice delegation to the thread as a user message
+ * `<realtime_delegation><input>…</input><transcript_delta>…</transcript_delta></realtime_delegation>`.
+ * Returns its parts, or null when the text is not a delegation.
+ */
+export function parseRealtimeDelegation(text: string): { input: string; transcript?: string } | null {
+    const match = DELEGATION.exec(text.trimStart());
+    const input = match?.[1]?.trim();
+    if (!match || !input) return null;
+    const transcript = match[2]?.trim();
+    return transcript ? {input, transcript} : {input};
+}

@@ -6,6 +6,8 @@ import {
     REALTIME_LIST_VOICES_METHOD,
     REALTIME_START_METHOD,
     REALTIME_STOP_METHOD,
+    parseRealtimeDelegation,
+    realtimeMeta,
 } from "./RealtimeExtension";
 import {RequestError, type SessionId, type SessionModeState} from "@agentclientprotocol/sdk/unstable";
 import {CodexEventHandler, type CompletedPlan, failureWasShownAsMessage} from "./CodexEventHandler";
@@ -28,6 +30,8 @@ import {
     type SessionMetadata,
     type SessionMetadataWithThread,
     type RecordedSubagentEntry,
+    type RealtimeReplaySegments,
+    type RealtimeSegment,
     type UrlElicitationRequester
 } from "./CodexAcpClient";
 import {
@@ -170,6 +174,7 @@ import {isJetBrains2026_1Client} from "./JBUtils";
 import {clientSupportsNotices} from "./SessionNotice";
 import {AsyncQuestionClient, AsyncQuestionElicitations, renderAsyncQuestionReply} from "./CodexAsyncQuestions";
 import {
+    createAgentMessageChunk,
     createAgentTextMessageChunk,
     createAgentTextThoughtChunk,
     createMessagePhaseMeta,
@@ -1723,6 +1728,7 @@ export class CodexAcpServer {
                 }
                 await this.trackCodexForegroundWork(sessionState, event);
                 await this.trackSteerLanding(sessionState, event);
+                await this.emitRealtimeHandoff(sessionState, event);
                 this.handleSkillsChanged(sessionState, event);
                 // Codex-started turns carry no `userMessage` item; `handleSessionScopedNotification`
                 // already drops that item type, so nothing is synthesized here.
@@ -1896,8 +1902,63 @@ export class CodexAcpServer {
             if (sessionId === null || !this.sessions.has(sessionId)) return;
             void this.connection.notify(REALTIME_EVENT_NOTIFICATION, {sessionId, method: notification.method, params})
                 .catch((error: unknown) => logger.error(`Failed to forward ${notification.method} for session ${sessionId}`, error));
+            if (notification.method === "thread/realtime/transcript/done") {
+                const role = params["role"] === "user" ? "user" : params["role"] === "assistant" ? "assistant" : null;
+                const text = typeof params["text"] === "string" ? params["text"].trim() : "";
+                this.realtimeSpeechSeq += 1;
+                if (role && text) void this.emitRealtimeSpeech(sessionId, {id: `realtime-${sessionId}-${this.realtimeSpeechSeq}`, role, text});
+            }
         });
     }
+
+    private realtimeSpeechSeq = 0;
+
+    /** What the user or the voice said, as a chat message of the voice conversation. */
+    private async emitRealtimeSpeech(sessionId: string, segment: RealtimeSegment): Promise<void> {
+        const session = new ACPSessionConnection(this.connection, sessionId);
+        try {
+            await session.update(this.realtimeSpeechUpdate(segment));
+        } catch (error) {
+            logger.error(`Failed to send voice speech for session ${sessionId}`, error);
+        }
+    }
+
+    private realtimeSpeechUpdate(segment: RealtimeSegment): UpdateSessionEvent {
+        const block = {type: "text" as const, text: segment.text};
+        const meta = realtimeMeta({kind: "speech", role: segment.role});
+        return segment.role === "user"
+            ? createUserMessageChunk(block, segment.id, meta)
+            : createAgentMessageChunk(block, segment.id, meta);
+    }
+
+    /** A voice delegation, shown as a handoff message: the request, with the conversation that led to it. */
+    private realtimeHandoffUpdate(item: ThreadItem & {type: "userMessage"}, messageId: string): UpdateSessionEvent | null {
+        const text = item.content.map(part => part.type === "text" ? part.text : "").join("");
+        const delegation = parseRealtimeDelegation(text);
+        if (delegation === null) return null;
+        return createUserMessageChunk(
+            {type: "text", text: delegation.input},
+            messageId,
+            realtimeMeta({kind: "handoff", ...(delegation.transcript ? {transcript: delegation.transcript} : {})}),
+        );
+    }
+
+    /** Codex-started turns drop their user message; a voice delegation's is shown as a handoff. */
+    private async emitRealtimeHandoff(sessionState: SessionState, event: ServerNotification): Promise<void> {
+        if (event.method !== "item/completed" || event.params.threadId !== sessionState.sessionId) return;
+        const item = event.params.item;
+        if (item.type !== "userMessage") return;
+        const update = this.realtimeHandoffUpdate(item, item.id);
+        if (update === null) return;
+        try {
+            await new ACPSessionConnection(this.connection, sessionState.sessionId).update(update);
+        } catch (error) {
+            logger.error(`Failed to send the voice handoff for session ${sessionState.sessionId}`, error);
+        }
+    }
+
+    /** Voice conversation segments to replay, per session, while its history is being streamed. */
+    private readonly realtimeReplay = new Map<string, RealtimeReplaySegments>();
 
     /**
      * Shows a landed steer as a live-only `user_message` (v2 only; the steering response itself
@@ -3768,6 +3829,26 @@ export class CodexAcpServer {
         thread: Thread,
         history: AsyncIterable<ThreadItemEntry[]>,
     ): Promise<void> {
+        // The voice conversation lives in the thread timeline, not in its items; interleave it.
+        const voice = await this.codexAcpClient.realtimeReplaySegments(sessionId).catch((error: unknown) => {
+            logger.error(`Voice history unavailable for session ${sessionId}`, error);
+            return null;
+        });
+        if (voice !== null) this.realtimeReplay.set(sessionId, voice);
+        try {
+            await this.streamThreadItemHistory(sessionId, thread, history);
+            const session = new ACPSessionConnection(this.connection, sessionId);
+            for (const segment of voice?.trailing ?? []) await session.replayUpdate(this.realtimeSpeechUpdate(segment), new Set());
+        } finally {
+            this.realtimeReplay.delete(sessionId);
+        }
+    }
+
+    private async streamThreadItemHistory(
+        sessionId: string,
+        thread: Thread,
+        history: AsyncIterable<ThreadItemEntry[]>,
+    ): Promise<void> {
         const session = new ACPSessionConnection(this.connection, sessionId);
         const sessionState = this.getSessionState(sessionId);
         const generation = this.getSessionGeneration(sessionId);
@@ -4144,6 +4225,12 @@ export class CodexAcpServer {
     }
 
     private async createHistoryUpdates(item: ThreadItem, sessionState: SessionState): Promise<UpdateSessionEvent[]> {
+        const voice = this.realtimeReplay.get(sessionState.sessionId)?.before.get(item.id) ?? [];
+        const updates = await this.createItemHistoryUpdates(item, sessionState);
+        return voice.length === 0 ? updates : [...voice.map(segment => this.realtimeSpeechUpdate(segment)), ...updates];
+    }
+
+    private async createItemHistoryUpdates(item: ThreadItem, sessionState: SessionState): Promise<UpdateSessionEvent[]> {
         const renderer = new AcpToolCallRenderer(sessionState.clientCapabilities);
         switch (item.type) {
             case "userMessage":
@@ -4200,6 +4287,8 @@ export class CodexAcpServer {
         // provided then (`clientId`), so it round-trips as the same message on reconnect; v1 has
         // no such client-minted id and keeps using Codex's own item id.
         const messageId = this.protocolVersion === 2 ? (item.clientId ?? item.id) : item.id;
+        const handoff = this.realtimeHandoffUpdate(item, messageId);
+        if (handoff !== null) return [handoff];
         const contentBlocks = item.content.map(input => this.userInputToContentBlocks(input));
         const attachmentUris = new Set(contentBlocks.flatMap((blocks, index) =>
             item.content[index]?.type === "text"

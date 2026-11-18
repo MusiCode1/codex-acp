@@ -1113,6 +1113,31 @@ export class CodexAcpClient {
         return {voices: v3, default: v3.includes(REALTIME_DEFAULT_VOICE) ? REALTIME_DEFAULT_VOICE : (v3[0] ?? REALTIME_DEFAULT_VOICE)};
     }
 
+    /**
+     * The voice conversation of a thread, for replay: final transcript segments grouped by the
+     * ordinary item they precede (rollout order), plus those after the last item.
+     */
+    async realtimeReplaySegments(threadId: string): Promise<RealtimeReplaySegments> {
+        const before = new Map<string, RealtimeSegment[]>();
+        let pending: RealtimeSegment[] = [];
+        let cursor: string | null = null;
+        do {
+            const page = await this.codexClient.threadTimelineList({threadId, cursor, limit: 500});
+            for (const entry of page.data) {
+                if (entry.type === "item") {
+                    if (pending.length > 0) before.set(entry.item.id, pending);
+                    pending = [];
+                } else if (entry.type === "realtime" && entry.item.type === "transcriptSegment") {
+                    const role = entry.item.role === "user" ? "user" : entry.item.role === "assistant" ? "assistant" : null;
+                    const text = entry.item.text?.trim();
+                    if (role && text) pending.push({id: entry.item.id, role, text});
+                }
+            }
+            cursor = page.nextCursor;
+        } while (cursor !== null);
+        return {before, trailing: pending};
+    }
+
     async stopRealtime(sessionId: string): Promise<void> {
         await this.codexClient.threadRealtimeStop({threadId: sessionId});
     }
@@ -2000,3 +2025,6 @@ function recordedItemCompleted(item: ThreadItem, completed: boolean): boolean {
             return completed;
     }
 }
+
+export type RealtimeSegment = { id: string; role: "user" | "assistant"; text: string };
+export type RealtimeReplaySegments = { before: Map<string, RealtimeSegment[]>; trailing: RealtimeSegment[] };

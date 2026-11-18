@@ -877,6 +877,10 @@ export class CodexAppServerClient {
         return await this.sendRequest({ method: "thread/realtime/stop", params });
     }
 
+    async threadTimelineList(params: {threadId: string; cursor?: string | null; limit?: number | null}): Promise<RealtimeTimelinePage> {
+        return await this.sendRequest({ method: "thread/timeline/list", params });
+    }
+
     async threadRealtimeListVoices(): Promise<{ voices: { v1?: string[]; v2?: string[]; v3?: string[] } }> {
         return await this.sendRequest({ method: "thread/realtime/listVoices", params: {} });
     }
@@ -1409,6 +1413,17 @@ export type CompactionCompletedNotification =
 type CodexRequest = DistributiveOmit<ClientRequest, "id"> | ThreadBackgroundTerminalsRequest
     | ThreadRealtimeStartRequest | ThreadRealtimeStopRequest | ThreadRealtimeAppendSpeechRequest
     | { method: "thread/realtime/listVoices"; params: Record<string, never> }
+    | { method: "thread/timeline/list"; params: {threadId: string; cursor?: string | null; limit?: number | null} }
+
+/** `thread/timeline/list` (experimental): ordinary items and realtime items in rollout order. */
+export type RealtimeTimelinePage = {
+    data: Array<
+        | { type: "item"; position: number; item: { id: string } }
+        | { type: "realtime"; position: number; item: { id: string; type: string; role?: string; text?: string } }
+        | { type: "turnStarted" | "turnCompleted"; position: number }
+    >;
+    nextCursor: string | null;
+};
 
 type ThreadRealtimeStartRequest = {
     method: "thread/realtime/start";

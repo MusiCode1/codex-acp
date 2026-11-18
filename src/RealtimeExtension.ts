@@ -21,6 +21,8 @@ export type RealtimeStartRequest = {
     prompt?: string;
     voice?: string;
     delegationAckFiller?: boolean;
+    /** How Codex's answers reach the voice: quiet context (`thinking`, default), `commentary`, or `bemTags`. */
+    handoffMode?: "thinking" | "commentary" | "bemTags";
 };
 export type RealtimeStartResponse = { sdp: string };
 export type RealtimeStopRequest = { sessionId: SessionId };
@@ -46,16 +48,3 @@ export const FORWARDED_REALTIME_METHODS: ReadonlySet<string> = new Set([
 
 /** How long to wait for the SDP answer after `thread/realtime/start` is accepted. */
 export const REALTIME_SDP_TIMEOUT_MS = 30_000;
-
-const DELEGATION_INPUT = /^<realtime_delegation>\s*<input>([\s\S]*?)<\/input>/;
-
-/**
- * Codex wraps a voice delegation as `<realtime_delegation><input>…</input>…</realtime_delegation>`.
- * Returns the spoken request, or null when the text is not a delegation.
- */
-export function realtimeDelegationInput(text: string): string | null {
-    const match = DELEGATION_INPUT.exec(text.trimStart());
-    if (!match) return null;
-    const input = (match[1] ?? "").trim();
-    return input.length > 0 ? input : null;
-}

@@ -5,7 +5,6 @@ import {
     REALTIME_EVENT_NOTIFICATION,
     REALTIME_START_METHOD,
     REALTIME_STOP_METHOD,
-    realtimeDelegationInput,
 } from "./RealtimeExtension";
 import {RequestError, type SessionId, type SessionModeState} from "@agentclientprotocol/sdk/unstable";
 import {CodexEventHandler, type CompletedPlan, failureWasShownAsMessage} from "./CodexEventHandler";
@@ -1719,7 +1718,6 @@ export class CodexAcpServer {
                 }
                 await this.trackCodexForegroundWork(sessionState, event);
                 await this.trackSteerLanding(sessionState, event);
-                await this.emitRealtimeDelegationUserMessage(sessionState, event);
                 this.handleSkillsChanged(sessionState, event);
                 // Codex-started turns carry no `userMessage` item; `handleSessionScopedNotification`
                 // already drops that item type, so nothing is synthesized here.
@@ -1894,25 +1892,6 @@ export class CodexAcpServer {
             void this.connection.notify(REALTIME_EVENT_NOTIFICATION, {sessionId, method: notification.method, params})
                 .catch((error: unknown) => logger.error(`Failed to forward ${notification.method} for session ${sessionId}`, error));
         });
-    }
-
-    /**
-     * A voice delegation runs as a Codex-started turn whose `userMessage` is the wrapped request.
-     * Codex-started turns otherwise drop that item, so show the spoken request as the user message.
-     */
-    private async emitRealtimeDelegationUserMessage(sessionState: SessionState, event: ServerNotification): Promise<void> {
-        if (event.method !== "item/completed" || event.params.threadId !== sessionState.sessionId) return;
-        const item = event.params.item;
-        if (item.type !== "userMessage") return;
-        const text = item.content.map(part => part.type === "text" ? part.text : "").join("");
-        const input = realtimeDelegationInput(text);
-        if (input === null) return;
-        const session = new ACPSessionConnection(this.connection, sessionState.sessionId);
-        try {
-            await session.update(createUserMessageChunk({type: "text", text: input}, item.id));
-        } catch (error) {
-            logger.error(`Failed to send the voice request for session ${sessionState.sessionId}`, error);
-        }
     }
 
     /**

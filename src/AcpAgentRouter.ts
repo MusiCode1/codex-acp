@@ -64,6 +64,7 @@ const realtimeStartParamsParser = z.object({
     prompt: z.string().optional(),
     voice: z.string().optional(),
     delegationAckFiller: z.boolean().optional(),
+    handoffMode: z.enum(["thinking", "commentary", "bemTags"]).optional(),
 }).passthrough();
 
 const realtimeStopParamsParser = z.object({

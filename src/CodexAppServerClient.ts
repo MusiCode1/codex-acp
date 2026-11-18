@@ -1415,6 +1415,7 @@ type ThreadRealtimeStartRequest = {
         prompt?: string;
         voice?: string;
         delegationAckFiller?: boolean;
+        codexResponseHandoffMode?: "thinking" | "commentary" | "bemTags";
     };
 };
 type ThreadRealtimeStopRequest = { method: "thread/realtime/stop"; params: { threadId: string } };

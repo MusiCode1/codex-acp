@@ -1097,6 +1097,7 @@ export class CodexAcpClient {
                 ...(request.prompt !== undefined ? {prompt: request.prompt} : {}),
                 ...(request.voice !== undefined ? {voice: request.voice} : {}),
                 ...(request.delegationAckFiller !== undefined ? {delegationAckFiller: request.delegationAckFiller} : {}),
+                ...(request.handoffMode !== undefined ? {codexResponseHandoffMode: request.handoffMode} : {}),
             });
             return await answer;
         } finally {
